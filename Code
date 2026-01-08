@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ProPad Prompter</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1a1a1c;
+            --accent-yellow: #f5a623;
+            --text-main: #ffffff;
+            --text-dim: #8e8e93;
+            --guide-color: rgba(245, 166, 35, 0.15);
+        }
+        body, html {
+            margin: 0; font-family: -apple-system, sans-serif;
+            background-color: var(--bg-color); color: var(--text-main); height: 100vh; overflow: hidden;
+        }
+        
+        /* Dashboard */
+        #dashboard { display: flex; flex-direction: column; height: 100%; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid #222; }
+        .logo-area { display: flex; align-items: center; gap: 15px; }
+        .logo-box { background: var(--accent-yellow); width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: black; font-size: 22px; }
+        .start-btn { background: var(--accent-yellow); color: black; border: none; padding: 12px 30px; border-radius: 30px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+
+        main { display: flex; gap: 20px; padding: 20px 40px 40px; flex-grow: 1; overflow: hidden; }
+        .editor-container { flex: 2; display: flex; flex-direction: column; gap: 10px; }
+        textarea { flex: 1; background: var(--card-bg); border: 1px solid #333; border-radius: 20px; padding: 25px; color: white; font-size: 18px; line-height: 1.6; resize: none; outline: none; }
+        
+        /* Sidebar Controls */
+        .sidebar { flex: 1; background: var(--card-bg); border-radius: 20px; padding: 25px; display: flex; flex-direction: column; gap: 25px; border: 1px solid #333; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .value-display { font-size: 24px; font-weight: bold; color: var(--accent-yellow); }
+        .unit { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; background: #333; border-radius: 5px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: var(--accent-yellow); border-radius: 50%; border: 2px solid white; }
+
+        .mirror-box { margin-top: auto; background: #000; padding: 20px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444; cursor: pointer; }
+        .toggle { width: 50px; height: 28px; background: #444; border-radius: 20px; position: relative; transition: 0.3s; }
+        .toggle.active { background: var(--accent-yellow); }
+        .toggle::before { content: ''; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: 0.2s; }
+        .toggle.active::before { left: 25px; }
+
+        /* Prompter Engine */
+        #prompter-view { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 1000; overflow: hidden; }
+        #scrolling-content { position: absolute; top: 100%; left: 0; width: 100%; font-weight: 500; will-change: transform; white-space: pre-wrap; transition: none; }
+        #reading-guide { position: fixed; top: 40%; left: 0; width: 100%; height: 90px; background: var(--guide-color); border-top: 1px solid var(--accent-yellow); border-bottom: 1px solid var(--accent-yellow); z-index: 1001; pointer-events: none; }
+        
+        .mirrored { transform: scaleX(-1) !important; }
+        .mirrored-container { transform: scaleX(-1); }
+        #countdown { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 180px; font-weight: bold; color: var(--accent-yellow); z-index: 1002; display: none; }
+        #pause-indicator { position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 10px; border: 1px solid var(--accent-yellow); color: var(--accent-yellow); font-weight: bold; display: none; z-index: 1003; }
+    </style>
+</head>
+<body onload="loadSavedData()">
+
+<div id="dashboard">
+    <header>
+        <div class="logo-area">
+            <div class="logo-box">🎬</div>
+            <div class="title"><h1>ProPad Prompter</h1><p>iPad Professional Interface</p></div>
+        </div>
+        <button class="start-btn" onclick="runPrompter()">▶ START PROMPTER</button>
+    </header>
+
+    <main>
+        <div class="editor-container">
+            <textarea id="scriptInput" oninput="saveData()">Welcome back to your session. Your script is automatically saved as you type.</textarea>
+        </div>
+
+        <div class="sidebar">
+            <div class="control-group">
+                <label style="font-size:12px;color:var(--text-dim)">SCROLLING SPEED</label>
+                <div><span class="value-display" id="speedVal">140</span><span class="unit">WPM</span></div>
+                <input type="range" id="speed" min="50" max="300" value="140" oninput="updateVal('speedVal', this.value); saveData();">
+            </div>
+
+            <div class="control-group">
+                <label style="font-size:12px;color:var(--text-dim)">FONT SIZE</label>
+                <div><span class="value-display" id="sizeVal">64</span><span class="unit">px</span></div>
+                <input type="range" id="fontSize" min="30" max="150" value="64" oninput="updateVal('sizeVal', this.value); saveData();">
+            </div>
+
+            <div class="control-group">
+                <label style="font-size:12px;color:var(--text-dim)">SIDE MARGINS</label>
+                <div><span class="value-display" id="marginVal">15</span><span class="unit">%</span></div>
+                <input type="range" id="margins" min="0" max="40" value="15" oninput="updateVal('marginVal', this.value); saveData();">
+            </div>
+
+            <div class="mirror-box" onclick="toggleMirrorBtn()">
+                <div style="font-weight:bold; font-size:14px;">MIRROR MODE</div>
+                <div class="toggle" id="mirrorToggle"></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div id="prompter-view" onclick="handleTap(event)">
+    <div id="pause-indicator">PAUSED</div>
+    <div id="reading-guide"></div>
+    <div id="scrolling-content"></div>
+</div>
+
+<div id="countdown"></div>
+
+<script>
+    let animationId;
+    let currentY = 0;
+    let isPaused = false;
+    let lastTap = 0;
+
+    function updateVal(id, val) { document.getElementById(id).innerText = val; }
+
+    function toggleMirrorBtn() {
+        document.getElementById('mirrorToggle').classList.toggle('active');
+        saveData();
+    }
+
+    function saveData() {
+        const data = {
+            text: document.getElementById('scriptInput').value,
+            speed: document.getElementById('speed').value,
+            fontSize: document.getElementById('fontSize').value,
+            margins: document.getElementById('margins').value,
+            mirror: document.getElementById('mirrorToggle').classList.contains('active')
+        };
+        localStorage.setItem('propad_data', JSON.stringify(data));
+    }
+
+    function loadSavedData() {
+        const saved = localStorage.getItem('propad_data');
+        if (saved) {
+            const data = JSON.parse(saved);
+            document.getElementById('scriptInput').value = data.text;
+            document.getElementById('speed').value = data.speed;
+            document.getElementById('fontSize').value = data.fontSize;
+            document.getElementById('margins').value = data.margins;
+            if (data.mirror) document.getElementById('mirrorToggle').classList.add('active');
+            updateVal('speedVal', data.speed);
+            updateVal('sizeVal', data.fontSize);
+            updateVal('marginVal', data.margins);
+        }
+    }
+
+    function runPrompter() {
+        const prompter = document.getElementById('prompter-view');
+        const content = document.getElementById('scrolling-content');
+        const countdownEl = document.getElementById('countdown');
+        const guide = document.getElementById('reading-guide');
+        
+        content.innerText = document.getElementById('scriptInput').value;
+        content.style.fontSize = document.getElementById('fontSize').value + 'px';
+        const margin = document.getElementById('margins').value + '%';
+        content.style.padding = `0 ${margin}`;
+        
+        const isMirrored = document.getElementById('mirrorToggle').classList.contains('active');
+        if (isMirrored) {
+            content.classList.add('mirrored-container');
+            guide.classList.add('mirrored');
+        } else {
+            content.classList.remove('mirrored-container');
+            guide.classList.remove('mirrored');
+        }
+
+        document.getElementById('dashboard').style.display = 'none';
+        prompter.style.display = 'block';
+        countdownEl.style.display = 'block';
+        isPaused = false;
+        currentY = window.innerHeight * 0.4; 
+        content.style.transform = `translateY(${currentY}px)`;
+
+        let count = 3;
+        countdownEl.innerText = count;
+        const timer = setInterval(() => {
+            count--;
+            if (count > 0) countdownEl.innerText = count;
+            else { clearInterval(timer); countdownEl.style.display = 'none'; startScrolling(); }
+        }, 1000);
+    }
+
+    function handleTap(e) {
+        const now = Date.now();
+        if (now - lastTap < 300) exitPrompter();
+        else togglePause();
+        lastTap = now;
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        document.getElementById('pause-indicator').style.display = isPaused ? 'block' : 'none';
+        if (!isPaused) startScrolling();
+        else cancelAnimationFrame(animationId);
+    }
+
+    function startScrolling() {
+        if (isPaused) return;
+        const content = document.getElementById('scrolling-content');
+        const speedFactor = (document.getElementById('speed').value / 140) * (document.getElementById('fontSize').value / 64);
+        const pixelsPerFrame = speedFactor * 2.2; 
+
+        function step() {
+            if (isPaused) return;
+            currentY -= pixelsPerFrame;
+            content.style.transform = `translateY(${currentY}px)`;
+            if (currentY < -content.offsetHeight) exitPrompter();
+            else animationId = requestAnimationFrame(step);
+        }
+        animationId = requestAnimationFrame(step);
+    }
+
+    function exitPrompter() {
+        isPaused = true;
+        cancelAnimationFrame(animationId);
+        document.getElementById('prompter-view').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'flex';
+    }
+</script>
+
+</body>
+</html>
