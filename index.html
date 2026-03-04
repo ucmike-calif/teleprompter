@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ProPad Remote</title>
+    <title>ProPad Prompter + Precision Edit</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -11,28 +11,40 @@
             --text-main: #ffffff; --text-dim: #8e8e93; --guide-color: rgba(245, 166, 35, 0.15);
         }
         body, html { margin: 0; font-family: -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-main); height: 100vh; overflow: hidden; }
-        
-        /* Dashboard */
-        #dashboard { display: flex; flex-direction: column; height: 100%; }
         header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid #222; }
         .logo-box { background: var(--accent-yellow); width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: black; font-size: 22px; }
         .start-btn { background: var(--accent-yellow); color: black; border: none; padding: 12px 30px; border-radius: 30px; font-weight: bold; cursor: pointer; }
-        main { display: flex; gap: 20px; padding: 20px 40px; height: calc(100vh - 120px); }
+        main { display: flex; gap: 20px; padding: 20px 40px 40px; height: calc(100vh - 120px); }
         .editor-container { flex: 2; display: flex; flex-direction: column; }
-        textarea { flex: 1; background: var(--card-bg); border: 1px solid #333; border-radius: 20px; padding: 25px; color: white; font-size: 18px; outline: none; }
+        textarea { flex: 1; background: var(--card-bg); border: 1px solid #333; border-radius: 20px; padding: 25px; color: white; font-size: 18px; line-height: 1.6; resize: none; outline: none; }
         .sidebar { flex: 1; background: var(--card-bg); border-radius: 20px; padding: 25px; display: flex; flex-direction: column; gap: 20px; border: 1px solid #333; }
-        
-        /* Remote Control View */
-        #remote-view { display: none; height: 100vh; flex-direction: column; align-items: center; justify-content: center; gap: 30px; padding: 40px; background: #000; }
-        .remote-btn { width: 100%; max-width: 300px; height: 100px; border-radius: 20px; font-size: 24px; font-weight: bold; border: none; cursor: pointer; }
-        .btn-start { background: var(--accent-yellow); color: black; }
-        .btn-pause { background: #333; color: white; border: 2px solid var(--accent-yellow); }
-        .btn-exit { background: #800; color: white; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        .value-display { font-size: 22px; font-weight: bold; color: var(--accent-yellow); }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; background: #333; border-radius: 5px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: var(--accent-yellow); border-radius: 50%; }
 
-        /* Prompter Engine */
-        #prompter-view { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 1000; overflow: hidden; }
-        #scrolling-content { position: absolute; top: 100%; left: 0; width: 100%; will-change: transform; white-space: pre-wrap; transition: none; }
+        #prompter-view { 
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: black; z-index: 1000; overflow-y: scroll; scroll-behavior: auto;
+            -webkit-overflow-scrolling: touch; 
+        }
+        #prompter-view::-webkit-scrollbar { display: none; }
+        #scrolling-content { 
+            width: 100%; padding-top: 40vh; padding-bottom: 60vh; 
+            white-space: pre-wrap; text-align: center; box-sizing: border-box; 
+            outline: none;
+        }
+        .mirrored { transform: scaleX(-1) !important; }
+
         #reading-guide { position: fixed; top: 40%; left: 0; width: 100%; height: 90px; background: var(--guide-color); border-top: 1px solid var(--accent-yellow); border-bottom: 1px solid var(--accent-yellow); z-index: 1001; pointer-events: none; }
+        #timer-box { position: fixed; top: 20px; left: 20px; color: var(--accent-yellow); font-family: monospace; font-size: 16px; z-index: 1003; background: rgba(0,0,0,0.7); padding: 8px 15px; border-radius: 8px; font-weight: bold; }
+        
+        #keyboard-trigger { position: fixed; bottom: 30px; left: 30px; background: #333; color: white; border: 2px solid var(--accent-yellow); padding: 15px; border-radius: 12px; font-size: 14px; font-weight: bold; cursor: pointer; z-index: 1004; }
+        #nudge-controls { position: fixed; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 10px; z-index: 1004; background: rgba(26,26,28,0.9); padding: 15px; border-radius: 15px; border: 1px solid #444; align-items: center;}
+        .nudge-btn { background: #333; color: var(--accent-yellow); border: 1px solid var(--accent-yellow); width: 50px; height: 50px; border-radius: 12px; font-size: 28px; font-weight: bold; cursor: pointer; }
+        #nudge-val { color: white; font-weight: bold; font-family: monospace; font-size: 20px;}
+
+        #pause-indicator { position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 10px; color: var(--accent-yellow); font-weight: bold; display: none; z-index: 1003; border: 1px solid var(--accent-yellow); }
     </style>
 </head>
 <body onload="initApp()">
@@ -45,90 +57,176 @@
     <main>
         <div class="editor-container"><textarea id="scriptInput" oninput="saveData()">Paste script here...</textarea></div>
         <div class="sidebar">
-            <div style="background:#000; padding:15px; border-radius:10px; border:1px dashed var(--accent-yellow);">
-                <strong>REMOTE SETUP</strong><br>
-                iPad ID: <span id="my-id" style="color:white; font-weight:bold;">...</span><br>
-                <input type="text" id="remote-id-input" placeholder="Enter iPad ID on iPhone" style="width:100%; margin:10px 0; padding:8px; border-radius:5px; border:none;">
-                <button onclick="connectAsRemote()" style="width:100%; background:var(--accent-yellow); border:none; padding:10px; border-radius:5px; font-weight:bold;">Connect iPhone as Remote</button>
-            </div>
-            <p style="font-size:12px; color:var(--text-dim)">Speed (WPM): <span id="speedVal" style="color:var(--accent-yellow)">140</span></p>
-            <input type="range" id="speed" min="50" max="300" value="140" oninput="document.getElementById('speedVal').innerText=this.value; saveData();" style="width:100%">
+            <button id="mirrorToggle" style="background:#333; color:white; border:1px solid var(--accent-yellow); padding:10px; border-radius:10px; cursor:pointer;" onclick="toggleMirror()">MIRROR TEXT: OFF</button>
+            <div class="control-group"><label>SPEED (WPM)</label><div><span class="value-display" id="speedVal">140</span></div><input type="range" id="speed" min="30" max="300" value="140" oninput="updateVal('speedVal', this.value); saveData();"></div>
+            <div class="control-group"><label>FONT SIZE</label><div><span class="value-display" id="sizeVal">64</span><span class="unit">px</span></div><input type="range" id="fontSize" min="30" max="150" value="64" oninput="updateVal('sizeVal', this.value); saveData();"></div>
+            <div class="control-group"><label>SIDE MARGINS</label><div><span class="value-display" id="marginVal">15</span><span class="unit">%</span></div><input type="range" id="margins" min="0" max="40" value="15" oninput="updateVal('marginVal', this.value); saveData();"></div>
         </div>
     </main>
 </div>
 
-<div id="remote-view">
-    <h2 id="remote-status" style="color:var(--accent-yellow)">CONTROLLING IPAD</h2>
-    <button class="remote-btn btn-start" onclick="sendCommand('START')">▶ START PROMPTER</button>
-    <button class="remote-btn btn-pause" onclick="sendCommand('PAUSE')">⏸ PAUSE / RESUME</button>
-    <button class="remote-btn btn-exit" onclick="sendCommand('EXIT')">✖ EXIT TO EDITOR</button>
-</div>
-
-<div id="prompter-view" onclick="togglePause()">
+<div id="prompter-view" onscroll="handleManualScroll()">
+    <div id="timer-box">EST. TIME: 00:00</div>
+    <div id="pause-indicator">PAUSED</div>
     <div id="reading-guide"></div>
-    <div id="scrolling-content"></div>
+    <div id="scrolling-content" contenteditable="false" spellcheck="false" onblur="disableEditMode()" onclick="handleViewClick(event)"></div>
+    <button id="keyboard-trigger" onclick="enableEditMode()">⌨ EDIT SCRIPT</button>
+    <div id="nudge-controls">
+        <button class="nudge-btn" onclick="nudgeSpeed(5)">+</button>
+        <div id="nudge-val">140</div>
+        <button class="nudge-btn" onclick="nudgeSpeed(-5)">-</button>
+    </div>
 </div>
 
 <script>
-    let peer, conn, animationId, currentY = 0, isPaused = false;
+    let animationId, isPaused = false, isMirrored = false, autoScrollPos = 0, isEditing = false;
+    let tapCount = 0, tapTimer;
 
-    function initApp() {
-        const saved = JSON.parse(localStorage.getItem('propad_data') || '{}');
-        if (saved.text) document.getElementById('scriptInput').value = saved.text;
-        
-        peer = new Peer();
-        peer.on('open', id => document.getElementById('my-id').innerText = id);
-        peer.on('connection', c => {
-            conn = c;
-            document.getElementById('my-id').innerText = "CONNECTED";
-            conn.on('data', data => handleCommand(data));
-        });
+    function initApp() { loadSavedData(); }
+    function updateVal(id, val) { 
+        document.getElementById(id).innerText = val; 
+        if (id === 'speedVal') document.getElementById('nudge-val').innerText = val;
     }
 
-    function connectAsRemote() {
-        const targetId = document.getElementById('remote-id-input').value;
-        conn = peer.connect(targetId);
-        conn.on('open', () => {
-            document.getElementById('dashboard').style.display = 'none';
-            document.getElementById('remote-view').style.display = 'flex';
-        });
+    function toggleMirror() { 
+        isMirrored = !isMirrored; 
+        document.getElementById('mirrorToggle').innerText = isMirrored ? "MIRROR TEXT: ON" : "MIRROR TEXT: OFF"; 
+        saveData(); 
+    }
+    
+    function nudgeSpeed(amount) {
+        let speedEl = document.getElementById('speed');
+        let newVal = Math.min(300, Math.max(30, parseInt(speedEl.value) + amount));
+        speedEl.value = newVal;
+        updateVal('speedVal', newVal);
+        saveData();
     }
 
-    function sendCommand(cmd) { if (conn) conn.send(cmd); }
+    function enableEditMode() {
+        const content = document.getElementById('scrolling-content');
+        if (!isPaused) togglePause();
+        isEditing = true;
+        content.contentEditable = "true";
+        // Native interaction is enabled here
+        document.getElementById('keyboard-trigger').innerText = "✅ DONE";
+        document.getElementById('keyboard-trigger').style.background = "#f5a623";
+        document.getElementById('keyboard-trigger').style.color = "black";
+        document.getElementById('keyboard-trigger').onclick = disableEditMode;
+    }
 
-    function handleCommand(cmd) {
-        if (cmd === 'START') runPrompter();
-        if (cmd === 'PAUSE') togglePause();
-        if (cmd === 'EXIT') exitPrompter();
+    function disableEditMode() {
+        const content = document.getElementById('scrolling-content');
+        content.contentEditable = "false";
+        isEditing = false;
+        document.getElementById('scriptInput').value = content.innerText;
+        saveData();
+        document.getElementById('keyboard-trigger').innerText = "⌨ EDIT SCRIPT";
+        document.getElementById('keyboard-trigger').style.background = "#333";
+        document.getElementById('keyboard-trigger').style.color = "white";
+        document.getElementById('keyboard-trigger').onclick = enableEditMode;
+    }
+
+    function saveData() { 
+        localStorage.setItem('propad_data', JSON.stringify({
+            text: document.getElementById('scriptInput').value, 
+            speed: document.getElementById('speed').value, 
+            fontSize: document.getElementById('fontSize').value, 
+            margins: document.getElementById('margins').value, 
+            mirrored: isMirrored
+        })); 
+    }
+    
+    function loadSavedData() {
+        const data = JSON.parse(localStorage.getItem('propad_data') || '{}');
+        if (data.text) {
+            document.getElementById('scriptInput').value = data.text;
+            document.getElementById('speed').value = data.speed;
+            document.getElementById('fontSize').value = data.fontSize;
+            document.getElementById('margins').value = data.margins;
+            if (data.mirrored) toggleMirror();
+            updateVal('speedVal', data.speed); updateVal('sizeVal', data.fontSize); updateVal('marginVal', data.margins);
+        }
     }
 
     function runPrompter() {
+        const view = document.getElementById('prompter-view');
         const content = document.getElementById('scrolling-content');
         content.innerText = document.getElementById('scriptInput').value;
+        content.style.fontSize = document.getElementById('fontSize').value + 'px';
+        const m = document.getElementById('margins').value + '%';
+        content.style.padding = `0 ${m}`;
+        content.classList.toggle('mirrored', isMirrored);
         document.getElementById('dashboard').style.display = 'none';
-        document.getElementById('prompter-view').style.display = 'block';
-        currentY = window.innerHeight * 0.4;
-        content.style.transform = `translateY(${currentY}px)`;
-        isPaused = false;
+        view.style.display = 'block';
+        autoScrollPos = 0; view.scrollTop = 0; isPaused = false;
         startScrolling();
     }
 
     function startScrolling() {
-        if (isPaused) return;
-        const speed = (document.getElementById('speed').value / 140) * 2.5;
+        if (isPaused || isEditing) return;
+        const view = document.getElementById('prompter-view');
         function step() {
-            if (!isPaused) {
-                currentY -= speed;
-                document.getElementById('scrolling-content').style.transform = `translateY(${currentY}px)`;
+            if (!isPaused && !isEditing) {
+                const speed = (document.getElementById('speed').value / 140) * (document.getElementById('fontSize').value / 64) * 1.2;
+                autoScrollPos += speed;
+                view.scrollTop = autoScrollPos;
+                updateTimer(speed);
             }
-            if (currentY > -document.getElementById('scrolling-content').offsetHeight) animationId = requestAnimationFrame(step);
+            if (view.scrollTop < (view.scrollHeight - window.innerHeight)) {
+                animationId = requestAnimationFrame(step);
+            } else { exitPrompter(); }
         }
         animationId = requestAnimationFrame(step);
     }
 
-    function togglePause() { isPaused = !isPaused; if(!isPaused) startScrolling(); }
-    function exitPrompter() { cancelAnimationFrame(animationId); document.getElementById('prompter-view').style.display = 'none'; document.getElementById('dashboard').style.display = 'flex'; }
-    function saveData() { localStorage.setItem('propad_data', JSON.stringify({text: document.getElementById('scriptInput').value})); }
+    function updateTimer(pixelsPerFrame) {
+        const view = document.getElementById('prompter-view');
+        const content = document.getElementById('scrolling-content');
+        const pixelsRemaining = content.offsetHeight - (view.scrollTop - (window.innerHeight * 0.4));
+        const secondsLeft = Math.max(0, Math.floor((pixelsRemaining / pixelsPerFrame) / 60));
+        const mins = Math.floor(secondsLeft / 60);
+        const secs = secondsLeft % 60;
+        document.getElementById('timer-box').innerText = `TIME LEFT: ${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function handleManualScroll() {
+        if (isEditing) return; // Allow native iOS scrolling/selection while editing
+        const view = document.getElementById('prompter-view');
+        if (Math.abs(view.scrollTop - autoScrollPos) > 2) autoScrollPos = view.scrollTop;
+    }
+
+    function handleViewClick(e) {
+        // IMPORTANT: Allow double-taps and clicks to pass through to the text if editing
+        if (isEditing) return; 
+        
+        if (e.target.closest('#nudge-controls') || e.target.closest('#keyboard-trigger')) return;
+        
+        tapCount++;
+        clearTimeout(tapTimer);
+
+        tapTimer = setTimeout(() => {
+            if (tapCount === 1) {
+                togglePause();
+            } else if (tapCount === 3) {
+                exitPrompter();
+            }
+            tapCount = 0;
+        }, 350); 
+    }
+
+    function togglePause() {
+        if (isEditing) return; 
+        isPaused = !isPaused;
+        document.getElementById('pause-indicator').style.display = isPaused ? 'block' : 'none';
+        if (!isPaused) startScrolling();
+        else cancelAnimationFrame(animationId);
+    }
+
+    function exitPrompter() { 
+        cancelAnimationFrame(animationId); 
+        document.getElementById('prompter-view').style.display = 'none'; 
+        document.getElementById('dashboard').style.display = 'flex'; 
+    }
 </script>
 </body>
 </html>
